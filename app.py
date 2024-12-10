@@ -3661,7 +3661,6 @@ def menu():
         except ValueError:
             print("Invalid input. Please enter a number.")
 
-if __name__ == "__main__":
- app.run(debug=True)
+
 #  menu()  # Start the programs
 
