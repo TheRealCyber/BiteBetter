@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Filtered Products</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style16.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Filtered Products</h1>
+
+        {% if products %}
+            <ul class="product-list">
+                {% for product, warnings in products %}
+                    <li class="product-item">
+                        <img src="{{ url_for('static', filename='product_images/' + product[1] + '.jpg') }}" 
+                             alt="{{ product[2] }}" 
+                             class="product-image">
+                        <div class="product-details">
+                            <strong>
+                                <a href="{{ url_for('product_info', product_id=product[0]) }}" class="name">
+                                    {{ product[2] }}
+                                </a>
+                            </strong><br>
+                            <em>{{ warnings[0] }}</em>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No products match your selected filters.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

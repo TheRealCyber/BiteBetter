@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Profile</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style11.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Profile Menu for {{ username }}</h1>
+    </header>
+    
+    <nav>
+        <ul>
+            <li><a href="{{ url_for('change_password') }}">Change Password</a></li>
+            <li><a href="{{ url_for('view_user_questions') }}">View Health Form</a></li>
+            <li><a href="{{ url_for('change_account_info') }}">Change Account Information</a></li>
+        </ul>
+    </nav>
+</body>
+</html>

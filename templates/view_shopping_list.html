@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopping List</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style9.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Shopping List</h1>
+        {% if products %}
+            <ul class="product-list">
+                {% for item in products %}
+                    <li class="product-item">
+                        <img src="{{ url_for('static', filename='product_images/' + item[2] + '.jpg') }}" 
+                             alt="Image of {{ item[3] }}" 
+                             class="product-image">
+                        <div class="product-info">
+                            <p class="product-name">{{ item[3] }}</p>
+                            <p class="product-quantity">Quantity: {{ item[30] }}</p>
+                        </div>
+                        <form action="{{ url_for('delete_from_shop') }}" method="post" class="delete-form">
+                            <input type="hidden" name="product_name" value="{{ item[3] }}">
+                            <input type="number" name="quantity_to_delete" placeholder="Quantity to delete" required>
+                            <button type="submit">Delete</button>
+                        </form>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>Your shopping list is empty.</p>
+        {% endif %}
+        <a href="{{ url_for('nutrition_summary_shop') }}" class="nutrition-summary-link">Nutritional Summary of Shopping list</a>
+    </div>
+</body>
+</html>

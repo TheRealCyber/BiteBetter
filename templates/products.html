@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Products</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style4.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@400..800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+    <div class="panel1">
+        <div class="nav">
+            <div class="logo"></div>
+            <div class="search-bar">
+                <form method="POST" action="{{ url_for('search_product_by_name') }}">
+                    <input type="text" name="product_name" class="search" placeholder="Search for product" required>
+                </form>
+            </div>
+            <a href="{{ url_for('shopping_list') }}"><i class="fa-solid fa-cart-shopping" style="color: #121212;" id="cart"></i></a>
+            <a href="{{ url_for('fav_list') }}"><i class="fa-solid fa-heart" style="color: #0d0d0d;" id="wishlist"></i></a>
+            <a href="{{ url_for('view_profile') }}"><i class="fa-solid fa-user" style="color: #050505;" id="user-profile"></i></a>
+          
+        </div>
+    <div class="container">
+        <h1>All Products</h1>
+        {% if products %}
+            <div class="product-grid">
+                {% for product in products %}
+                    <div class="product">
+                        <img src="{{ url_for('static', filename='product_images/' + product[1] + '.jpg') }}" 
+                             alt="{{ product[1] }}"
+                             style="width: 505px; height: auto;">
+                        <p><strong>Product Name:</strong>
+                            <a href="{{ url_for('product_info', product_id=product[0]) }}" class="name">
+                                {{ product[2] }}
+                            </a>
+                        </p>
+                        <p><strong>Nutrition Grade:</strong> {{ product[16] }}</p>
+                    </div>
+                {% endfor %}
+            </div> <!-- End of Product Grid -->
+        {% else %}
+            <p>No products found in the database.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

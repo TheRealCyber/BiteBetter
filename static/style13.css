@@ -1,0 +1,87 @@
+/* Reset default browser styles */
+* {
+    box-sizing: border-box; /* Include padding and border in element's total width */
+    margin: 0;
+    padding: 0;
+}
+
+/* Global Styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* More elegant font */
+    background-color: #e9ecef; /* Light background color */
+    color: #333; /* Dark text color for readability */
+}
+
+/* Container Styles */
+.container {
+    background: white; /* White background for the container */
+    border-radius: 10px; /* Rounded corners */
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1); /* Soft shadow */
+    padding: 40px; /* Increased padding around the container */
+    width: 100%; /* Full width for small screens */
+    max-width: 700px; /* Limit width for larger screens */
+    margin: 50px auto; /* Center the container */
+}
+
+/* Heading Styles */
+h1 {
+    text-align: center; /* Center the heading */
+    margin-bottom: 30px; /* Space below the heading */
+    color: #28a745; /* Green color for the heading */
+    font-size: 2.5em; /* Larger font size for heading */
+}
+
+/* Profile Card Styles */
+.profile-card {
+    background-color: #f8f9fa; /* Light gray background for the profile card */
+    border: 1px solid #ccc; /* Light border around the card */
+    border-radius: 10px; /* Rounded corners */
+    padding: 20px; /* Padding inside the card */
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); /* Soft shadow for the card */
+    margin-bottom: 30px; /* Space below the profile card */
+}
+
+/* Profile List Styles */
+.profile-list {
+    list-style-type: none; /* Remove bullets from the list */
+    padding: 0; /* Remove padding */
+}
+
+/* List Item Styles */
+.profile-list li {
+    padding: 15px; /* Increased padding for each list item */
+    border-bottom: 1px solid #ddd; /* Bottom border for separation */
+    transition: background-color 0.3s; /* Smooth transition for background color */
+}
+
+/* List Item Hover Effect */
+.profile-list li:hover {
+    background-color: #f1f3f5; /* Light gray background on hover */
+}
+
+/* Strong Text Styles */
+.profile-list li strong {
+    color: #28a745; /* Green color for labels */
+    font-size: 1.2em; /* Larger font size for strong text */
+}
+
+/* Edit Link Styles */
+.edit-link {
+    display: block; /* Block display for link */
+    text-align: center; /* Center the link */
+    margin-top: 20px; /* Space above the link */
+    background-color: #28a745; /* Green background */
+    color: white; /* White text color */
+    padding: 12px 20px; /* Padding for button */
+    border-radius: 5px; /* Rounded corners for button */
+    text-decoration: none; /* Remove underline */
+    font-size: 1.2em; /* Larger font size for the button */
+    transition: background-color 0.3s, transform 0.3s; /* Smooth transition */
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1); /* Soft shadow for the button */
+}
+
+/* Edit Link Hover Effects */
+.edit-link:hover {
+    background-color: #218838; /* Darker green on hover */
+    transform: translateY(-2px); /* Slight lift on hover */
+}
