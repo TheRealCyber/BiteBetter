@@ -19,6 +19,6 @@ EXPOSE 8000
 EXPOSE 5000
 
 # Command to run your app
-#CMD ["gunicorn", "app:app", "--log-level", "debug"]
+CMD ["gunicorn", "app:app", "--log-level", "debug"]
 #or
-CMD ["python", "app.py"]
+#CMD ["python", "app.py"]
