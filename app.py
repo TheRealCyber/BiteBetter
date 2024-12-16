@@ -12,7 +12,6 @@ import cv2
 import numpy as np
 import pandas as pd
 from collections import defaultdict
-from PIL import Image
 import requests
 from io import BytesIO
 
