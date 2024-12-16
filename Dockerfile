@@ -12,12 +12,12 @@ RUN apt-get update && apt-get install -y \
 # Copy the current directory contents into the container at /app
 COPY . .
 
-# Install Poetry and dependencies
-RUN pip install poetry==1.7.1
-RUN poetry install --no-dev
+# Install dependencies
+RUN ./build.sh
+RUN pip3 install -r requirements.txt
 
 # Expose port 8000 (or your app's port)
 EXPOSE 8000
 
 # Command to run your app
-CMD ["poetry", "run", "python", "app.py"]
+CMD ["python", "app.py"]
