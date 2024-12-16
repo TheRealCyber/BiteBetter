@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
 COPY . .
 
 # Install dependencies
-RUN ./build.sh
+RUN chmod +x ./build.sh && ./build.sh
 RUN pip3 install -r requirements.txt
 
 # Expose port 8000 (or your app's port)
