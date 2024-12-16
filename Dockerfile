@@ -14,8 +14,9 @@ RUN chmod +x ./build.sh && ./build.sh
 
 RUN pip3 install -r requirements.txt
 
-# Expose port 8000 (or your app's port)
+# Expose port (your app's port)
 EXPOSE 8000
+EXPOSE 5000
 
 # Command to run your app
 #CMD ["gunicorn", "app:app", "--log-level", "debug"]
