@@ -12,6 +12,9 @@ import cv2
 import numpy as np
 import pandas as pd
 from collections import defaultdict
+from PIL import Image
+import requests
+from io import BytesIO
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key' 
@@ -298,6 +301,40 @@ def fav_list():
         conn.close()
 
 
+# def view_shopping_list(username):
+#     conn = sqlite3.connect(SHOP_DB_PATH)
+#     cursor = conn.cursor()
+#     try:
+#         cursor.execute('SELECT * FROM shopping_list WHERE username=?', (username,))
+#         products = cursor.fetchall()
+#         if products:
+#             print("\nShopping List:")
+#             for item in products:
+#                 print(f"- Product Name: {item[3]} , Quantity: {item[30]} ")
+#         else:
+#             print("Your shopping list is empty.")
+#     except sqlite3.Error as e:
+#             print(f"An error occurred: {e}. It might be caused by an invalid column name or unexpected characters.")
+#     finally:
+#         conn.close()
+
+
+# @app.route('/shopping_list', methods=['GET'])
+# def shopping_list():
+#     if 'username' not in session:
+#         return redirect(url_for('login'))  # Redirect to login if user is not authenticated
+
+#     username = session['username']
+
+#     with sqlite3.connect(SHOP_DB_PATH) as conn:
+#         cursor = conn.cursor()
+#         try:
+#             cursor.execute('SELECT * FROM shopping_list WHERE username=?', (username,))
+#             products = cursor.fetchall()
+#             return render_template('view_shopping_list.html', products=products)
+#         except sqlite3.Error as e:
+#             return f"An error occurred: {e}. It might be caused by an invalid column name or unexpected characters."
+
 def view_shopping_list(username):
     conn = sqlite3.connect(SHOP_DB_PATH)
     cursor = conn.cursor()
@@ -307,33 +344,130 @@ def view_shopping_list(username):
         if products:
             print("\nShopping List:")
             for item in products:
-                print(f"- Product Name: {item[3]} , Quantity: {item[30]} ")
+                print(f"- Product Name: {item[3]} , Quantity: {item[30]}")
+            
+            # Call the classify shopping cart feature
+            cart_classification = classify_shopping_cart(username)
+            if cart_classification:
+                print("\nShopping Cart Classification:")
+                for product, classification in cart_classification.items():
+                    print(f"- {product}: {classification}")
+            else:
+                print("\nUnable to classify the shopping cart. Ensure valid product data exists.")
         else:
             print("Your shopping list is empty.")
     except sqlite3.Error as e:
-            print(f"An error occurred: {e}. It might be caused by an invalid column name or unexpected characters.")
+        print(f"An error occurred: {e}. It might be caused by an invalid column name or unexpected characters.")
     finally:
         conn.close()
+
+def classify_shopping_cart(username):
+    """
+    Classifies products in the shopping cart based on health scoring or other criteria.
+
+    Args:
+        username (str): Username of the person whose cart is being classified.
+
+    Returns:
+        dict: Dictionary with product names as keys and classification (e.g., Healthy, Average, Unhealthy) as values.
+    """
+    conn = sqlite3.connect(SHOP_DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('SELECT product_name, energy, proteins, sugars, total_fat FROM shopping_list WHERE username=?', (username,))
+        products = cursor.fetchall()
+        classifications = {}
+
+        # Apply classification logic for each product
+        for product in products:
+            product_name, energy, proteins, sugars, total_fat = product
+            if energy < 150 and sugars < 5 and proteins > 10:
+                classifications[product_name] = 'Goal Friendly'
+            elif sugars > 15 or total_fat > 20:
+                classifications[product_name] = 'Goal Unfriendly'
+            else:
+                classifications[product_name] = 'Goal Friendly'
+        return classifications
+    except sqlite3.Error as e:
+        print(f"An error occurred while classifying the cart: {e}")
+        return {}
+    finally:
+        conn.close()
+        
+# @app.route('/shopping_list', methods=['GET'])
+# def shopping_list():
+#     # Check if the user is logged in
+#     if 'username' not in session:
+#         return redirect(url_for('login'))  # Redirect to login if user is not authenticated
+
+#     username = session['username']
+
+#     try:
+#         # Connect to the database
+#         with sqlite3.connect(SHOP_DB_PATH) as conn:
+#             cursor = conn.cursor()
+#             cursor.execute('SELECT * FROM shopping_list WHERE username=?', (username,))
+#             products = cursor.fetchall()
+
+#             # If products exist, display them
+#             if products:
+#                 # Process products for rendering in the view
+#                 cart_classification = classify_shopping_cart(username)
+#                 return render_template('view_shopping_list.html', products=products, classifications=cart_classification)
+
+#             else:
+#                 return "Your shopping list is empty."
+
+#     except sqlite3.Error as e:
+#         return f"An error occurred: {e}. It might be caused by an invalid column name or unexpected characters."
+
 
 
 @app.route('/shopping_list', methods=['GET'])
 def shopping_list():
+    # Check if the user is logged in
     if 'username' not in session:
         return redirect(url_for('login'))  # Redirect to login if user is not authenticated
 
     username = session['username']
 
-    with sqlite3.connect(SHOP_DB_PATH) as conn:
-        cursor = conn.cursor()
-        try:
+    try:
+        # Connect to the database
+        with sqlite3.connect(SHOP_DB_PATH) as conn:
+            cursor = conn.cursor()
             cursor.execute('SELECT * FROM shopping_list WHERE username=?', (username,))
             products = cursor.fetchall()
-            return render_template('view_shopping_list.html', products=products)
-        except sqlite3.Error as e:
-            return f"An error occurred: {e}. It might be caused by an invalid column name or unexpected characters."
 
+            # If products exist, process them and classify
+            if products:
+                goal_friendly_products = []
+                goal_unfriendly_products = []
 
+                # Assuming the classify_shopping_cart function classifies each product in the cart
+                cart_classification = classify_shopping_cart(username)
 
+                # Classify products into goal-friendly and goal-unfriendly
+                for item in products:
+                    product_name = item[3]
+                    classification = cart_classification.get(product_name, 'Unknown')
+                    
+                    if classification == 'Goal Friendly':
+                        goal_friendly_products.append(item)
+                    elif classification == 'Goal Unfriendly':
+                        goal_unfriendly_products.append(item)
+                    else:
+                        goal_unfriendly_products.append(item)  # Default to "Unfriendly" if unknown
+
+                # Render template with classified products
+                return render_template('view_shopping_list.html', 
+                                       goal_friendly_products=goal_friendly_products, 
+                                       goal_unfriendly_products=goal_unfriendly_products)
+
+            else:
+                return "Your shopping list is empty."
+
+    except sqlite3.Error as e:
+        return f"An error occurred: {e}. It might be caused by an invalid column name or unexpected characters."
 
 
 def delete_from_fav_list(username, product_name_fav):
@@ -415,6 +549,55 @@ def delete_from_shopping_list(username, product_name, quantity_to_delete_shop):
     finally:
         conn.close()
 
+# @app.route('/delete_from_shop', methods=['POST'])
+# def delete_from_shop():
+#     if 'username' not in session:
+#         return redirect(url_for('login'))  # Redirect to login if user is not authenticated
+
+#     username = session['username']
+#     product_name = request.form.get('product_name')
+#     quantity_to_delete_shop = request.form.get('quantity_to_delete')
+
+#     conn = sqlite3.connect(SHOP_DB_PATH)
+#     cursor = conn.cursor()
+#     try:
+#         cursor.execute('''
+#             SELECT product_name, quantity_shop
+#             FROM shopping_list
+#             WHERE username = ? AND product_name = ?
+#         ''', (username, product_name))
+        
+#         product = cursor.fetchone()
+        
+#         if product:
+#             current_quantity = product[1]
+#             new_quantity = current_quantity - int(quantity_to_delete_shop)
+            
+#             if new_quantity > 0:
+#                 cursor.execute('''
+#                     UPDATE shopping_list
+#                     SET quantity_shop = ?
+#                     WHERE username = ? AND product_name = ?
+#                 ''', (new_quantity, username, product_name))
+#                 message = f'Updated quantity for product "{product[0]}" to {new_quantity}.'
+#             else:
+#                 cursor.execute('''
+#                     DELETE FROM shopping_list
+#                     WHERE username = ? AND product_name = ?
+#                 ''', (username, product_name))
+#                 message = f'Removed product "{product[0]}" from the shopping list.'
+                
+#             conn.commit()
+#         else:
+#             message = f'Product "{product_name}" not found in the shopping list.'
+
+#     except sqlite3.Error as e:
+#         message = f"An error occurred: {e}"
+#     finally:
+#         conn.close()
+    
+#     return redirect(url_for('shopping_list'))  # Redirect back to the shopping list page with a message
+
 @app.route('/delete_from_shop', methods=['POST'])
 def delete_from_shop():
     if 'username' not in session:
@@ -422,48 +605,55 @@ def delete_from_shop():
 
     username = session['username']
     product_name = request.form.get('product_name')
-    quantity_to_delete_shop = request.form.get('quantity_to_delete')
 
-    conn = sqlite3.connect(SHOP_DB_PATH)
-    cursor = conn.cursor()
     try:
-        cursor.execute('''
-            SELECT product_name, quantity_shop
-            FROM shopping_list
-            WHERE username = ? AND product_name = ?
-        ''', (username, product_name))
-        
-        product = cursor.fetchone()
-        
-        if product:
-            current_quantity = product[1]
-            new_quantity = current_quantity - int(quantity_to_delete_shop)
+        quantity_to_delete_shop = int(request.form.get('quantity_to_delete'))
+        if quantity_to_delete_shop <= 0:
+            flash("Quantity to delete must be a positive number.")
+            return redirect(url_for('shopping_list'))
+    except (ValueError, TypeError):
+        flash("Invalid quantity provided.")
+        return redirect(url_for('shopping_list'))
+
+    with sqlite3.connect(SHOP_DB_PATH) as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                SELECT product_name, quantity_shop
+                FROM shopping_list
+                WHERE username = ? AND product_name = ?
+            ''', (username, product_name))
             
-            if new_quantity > 0:
-                cursor.execute('''
-                    UPDATE shopping_list
-                    SET quantity_shop = ?
-                    WHERE username = ? AND product_name = ?
-                ''', (new_quantity, username, product_name))
-                message = f'Updated quantity for product "{product[0]}" to {new_quantity}.'
-            else:
-                cursor.execute('''
-                    DELETE FROM shopping_list
-                    WHERE username = ? AND product_name = ?
-                ''', (username, product_name))
-                message = f'Removed product "{product[0]}" from the shopping list.'
+            product = cursor.fetchone()
+            
+            if product:
+                current_quantity = product[1]
+                new_quantity = current_quantity - quantity_to_delete_shop
                 
-            conn.commit()
-        else:
-            message = f'Product "{product_name}" not found in the shopping list.'
+                if new_quantity > 0:
+                    cursor.execute('''
+                        UPDATE shopping_list
+                        SET quantity_shop = ?
+                        WHERE username = ? AND product_name = ?
+                    ''', (new_quantity, username, product_name))
+                    message = f'Updated quantity for product "{product[0]}" to {new_quantity}.'
+                else:
+                    cursor.execute('''
+                        DELETE FROM shopping_list
+                        WHERE username = ? AND product_name = ?
+                    ''', (username, product_name))
+                    message = f'Removed product "{product[0]}" from the shopping list.'
+                    
+                conn.commit()
+            else:
+                message = f'Product "{product_name}" not found in the shopping list.'
 
-    except sqlite3.Error as e:
-        message = f"An error occurred: {e}"
-    finally:
-        conn.close()
+        except sqlite3.Error as e:
+            message = f"An error occurred: {e}"
+        
+        flash(message)
     
-    return redirect(url_for('shopping_list'))  # Redirect back to the shopping list page with a message
-
+    return redirect(url_for('shopping_list'))
 
 
 
@@ -1001,9 +1191,9 @@ def display_product_info(username, barcode):
                 'allergens': result[15]
             }
 
-            # Calculate the health score
-            health_score = calculate_health_score(user_data, product_data)
-            print(f"\n🧑‍⚕️ Health Score (for {username}): {health_score}/5")   
+            # # Calculate the health score
+            # health_score = calculate_health_score(user_data, product_data)
+            # print(f"\n🧑‍⚕️ Health Score (for {username}): {health_score}/5")   
 
         # Ask if the user wants to add the product to the shopping list
         add_to_shop_list = input("\nDo you want to add this product to your shopping list? (yes/no): ").strip().lower()
@@ -1036,65 +1226,65 @@ def display_product_info(username, barcode):
         print(f"No product found with barcode: {barcode}")
 
 
-def calculate_health_score(user_health_data, product_data):
+# def calculate_health_score(user_health_data, product_data):
     
-    score = 50  # Start with a neutral score of 50
-    max_score = 100
+#     score = 50  # Start with a neutral score of 50
+#     max_score = 100
     
-    # Normalize user health data
-    chronic_illnesses = [illness.strip().lower() for illness in user_health_data.get('chronic_illnesses', '').split(',')]
-    dietary_restrictions = [restriction.strip().lower() for restriction in user_health_data.get('dietary_restrictions', '').split(',')]
-    trigger_ingredients = [trigger.strip().lower() for trigger in user_health_data.get('trigger_ingredients', '').split(',')]
-    health_goals = [goal.strip().lower() for goal in user_health_data.get('health_goals', '').split(',')]
+#     # Normalize user health data
+#     chronic_illnesses = [illness.strip().lower() for illness in user_health_data.get('chronic_illnesses', '').split(',')]
+#     dietary_restrictions = [restriction.strip().lower() for restriction in user_health_data.get('dietary_restrictions', '').split(',')]
+#     trigger_ingredients = [trigger.strip().lower() for trigger in user_health_data.get('trigger_ingredients', '').split(',')]
+#     health_goals = [goal.strip().lower() for goal in user_health_data.get('health_goals', '').split(',')]
 
-    # Assign penalties based on chronic illnesses and allergens
-    if 'lactose intolerance' in chronic_illnesses and 'lactose' in product_data.get('allergens', '').lower():
-        score -= 10
-    if 'diabetes' in chronic_illnesses and product_data.get('sugars', 0) > 25:  # Increased sugar threshold
-        score -= 20  # Reduced sugar penalty
-    if 'high blood pressure' in chronic_illnesses and product_data.get('sodium', 0) > 200:
-        score -= 15
+#     # Assign penalties based on chronic illnesses and allergens
+#     if 'lactose intolerance' in chronic_illnesses and 'lactose' in product_data.get('allergens', '').lower():
+#         score -= 10
+#     if 'diabetes' in chronic_illnesses and product_data.get('sugars', 0) > 25:  # Increased sugar threshold
+#         score -= 20  # Reduced sugar penalty
+#     if 'high blood pressure' in chronic_illnesses and product_data.get('sodium', 0) > 200:
+#         score -= 15
 
-    # Assign rewards for health goals and dietary preferences
-    if 'low-sugar' in dietary_restrictions and product_data.get('sugars', 0) < 10:
-        score += 10
-    if 'protein-rich' in dietary_restrictions and product_data.get('proteins', 0) > 15:
-        score += 25  # Slightly reduced reward to balance
-    if 'bodybuilding' in health_goals and product_data.get('proteins', 0) > 15:
-        score += 35  # Increased reward for protein-rich products
-    if 'fiber-rich' in dietary_restrictions and product_data.get('dietary_fibre', 0) > 8:
-        score += 10  # Reward for high fiber
+#     # Assign rewards for health goals and dietary preferences
+#     if 'low-sugar' in dietary_restrictions and product_data.get('sugars', 0) < 10:
+#         score += 10
+#     if 'protein-rich' in dietary_restrictions and product_data.get('proteins', 0) > 15:
+#         score += 25  # Slightly reduced reward to balance
+#     if 'bodybuilding' in health_goals and product_data.get('proteins', 0) > 15:
+#         score += 35  # Increased reward for protein-rich products
+#     if 'fiber-rich' in dietary_restrictions and product_data.get('dietary_fibre', 0) > 8:
+#         score += 10  # Reward for high fiber
 
-    # Penalties for unhealthy content
-    if product_data.get('sugars', 0) > 25:  # Increased sugar threshold for penalty
-        score -= 10  # High sugar penalty
-    if product_data.get('saturated_fat', 0) > 8:
-        score -= 10  # Reduced saturated fat penalty
-    if product_data.get('trans_fat', 0) > 0:
-        score -= 10  # Trans fat penalty
+#     # Penalties for unhealthy content
+#     if product_data.get('sugars', 0) > 25:  # Increased sugar threshold for penalty
+#         score -= 10  # High sugar penalty
+#     if product_data.get('saturated_fat', 0) > 8:
+#         score -= 10  # Reduced saturated fat penalty
+#     if product_data.get('trans_fat', 0) > 0:
+#         score -= 10  # Trans fat penalty
 
-    # Reward for natural ingredients and whole foods
-    if 'oats' in product_data.get('ingredients', '').lower() or 'nuts' in product_data.get('ingredients', '').lower():
-        score += 15  # Increase reward for whole grains and nuts
+#     # Reward for natural ingredients and whole foods
+#     if 'oats' in product_data.get('ingredients', '').lower() or 'nuts' in product_data.get('ingredients', '').lower():
+#         score += 15  # Increase reward for whole grains and nuts
 
-    # Penalty for artificial additives
-    additives = ['preservatives', 'artificial', 'emulsifiers', 'stabilizers']
-    for additive in additives:
-        if additive in product_data.get('ingredients', '').lower():
-            score -= 3  # Reduced penalty for each artificial ingredient
+#     # Penalty for artificial additives
+#     additives = ['preservatives', 'artificial', 'emulsifiers', 'stabilizers']
+#     for additive in additives:
+#         if additive in product_data.get('ingredients', '').lower():
+#             score -= 3  # Reduced penalty for each artificial ingredient
 
-    # Reward for gluten-free products if the user has gluten restrictions
-    if 'gluten-free' in dietary_restrictions and 'wheat' not in product_data.get('allergens', '').lower():
-        score += 10
+#     # Reward for gluten-free products if the user has gluten restrictions
+#     if 'gluten-free' in dietary_restrictions and 'wheat' not in product_data.get('allergens', '').lower():
+#         score += 10
 
-    # Ensure score is within the 0-100 range
-    score = max(0, min(score, max_score))
+#     # Ensure score is within the 0-100 range
+#     score = max(0, min(score, max_score))
     
-    # Scale score to 1-5
-    final_score = int(round((score / max_score) * 5))
-    final_score = max(1, min(final_score, 5))  # Ensure the final score is between 1 and 5
+#     # Scale score to 1-5
+#     final_score = int(round((score / max_score) * 5))
+#     final_score = max(1, min(final_score, 5))  # Ensure the final score is between 1 and 5
     
-    return final_score
+#     return final_score
 
 
 
@@ -1628,7 +1818,9 @@ def health_form(username):
             form_data = request.form.to_dict()
             user_registration = Register({})
             user_registration.collect_health_data(username, form_data)
-            return "Health data submitted successfully!"
+            flash("Health data submitted successfully!", "success")
+            
+            return redirect(url_for('login'))
         return render_template('health_form.html', username=username)
     else:
         return redirect(url_for('login'))
@@ -1854,6 +2046,366 @@ def search_product_by_name():
         conn.close()
 
 
+# @app.route('/post_login_menu', methods=['GET', 'POST'])
+# def post_login_menu():
+#     if 'username' not in session:
+#         return redirect(url_for('login'))
+
+#     username = session['username']
+
+#     if request.method == 'POST':
+#         barcode_num = request.form.get('barcode_num')
+#         product_name = request.form.get('product_name')
+
+#         # Check if barcode number is provided
+#         if barcode_num:
+#             # Fetch product info using the input barcode number
+#             product_info = get_product_info(barcode_num)
+#             if product_info:
+#                 return render_template('product_info.html', product=product_info)
+#             else:
+#                 return render_template('post_login_menu.html', username=username, error="No product found with the given barcode.")
+
+#         # Check if product name is provided
+#         if product_name:
+#             # Search for products by name
+#             matching_products = search_product_by_name(product_name)
+#             if matching_products:
+#                 # Redirect to product_info.html with the first matching product
+#                 first_product = matching_products[0]
+#                 product_info = {
+#                     'id': first_product[0],
+#                     'barcode_num': first_product[1],
+#                     'product_name': first_product[2],
+#                     'ingredients': first_product[3],
+#                     'energy': first_product[4],
+#                     'proteins': first_product[5],
+#                     'carbohydrates': first_product[6],
+#                     'cholesterol': first_product[7],
+#                     'sugars': first_product[8],
+#                     'total_fat': first_product[9],
+#                     'saturated_fat': first_product[10],
+#                     'trans_fat': first_product[11],
+#                     'sodium': first_product[12],
+#                     'fruits_vegetables_nuts': first_product[13],
+#                     'dietary_fibre': first_product[14],
+#                     'allergens': first_product[15],
+#                     'nutrition_grade': first_product[16],
+#                 }
+#                 return render_template('product_name.html', product=product_info)
+#             else:
+#                 return render_template('post_login_menu.html', username=username, error="No products found matching the entered name.")
+
+#     return render_template('post_login_menu.html', username=username)
+
+# API endpoints for product lookup
+
+
+
+def insert_product_data(product_data):
+    """Insert product data into the Products table."""
+    connection = sqlite3.connect(PRODUCT_DB_PATH)
+    cursor = connection.cursor()
+
+    # Define the insert query
+    query = """
+    INSERT INTO Products (
+        barcode_num, product_name, ingredients, energy, proteins, carbohydrates,
+        cholesterol, sugars, total_fat, saturated_fat, trans_fat, sodium,
+        fruits_vegetables_nuts, dietary_fibre, allergens, nutrition_grade
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+
+    # Extract values from product_data dictionary
+    values = (
+        product_data.get("barcode_num"),
+        product_data.get("product_name"),
+        product_data.get("ingredients"),
+        product_data.get("energy"),
+        product_data.get("proteins"),
+        product_data.get("carbohydrates"),
+        product_data.get("cholesterol"),
+        product_data.get("sugars"),
+        product_data.get("total_fat"),
+        product_data.get("saturated_fat"),
+        product_data.get("trans_fat"),
+        product_data.get("sodium"),
+        product_data.get("fruits_vegetables_nuts"),
+        product_data.get("dietary_fibre"),
+        product_data.get("allergens"),
+        product_data.get("nutrition_grade"),
+    )
+
+    # Execute the insert query
+    cursor.execute(query, values)
+    connection.commit()
+    connection.close()
+
+
+# import requests
+
+# API_ENDPOINTS = [
+#     "https://world.openfoodfacts.org/api/v0/product/{barcode}.json",
+#     "https://api.upcitemdb.com/prod/trial/lookup?upc={barcode}"
+# ]
+ 
+
+# @app.route('/post_login_menu', methods=['GET', 'POST'])
+# def post_login_menu():
+#     if 'username' not in session:
+#         return redirect(url_for('login'))
+
+#     username = session['username']
+
+#     if request.method == 'POST':
+#         barcode_num = request.form.get('barcode_num')
+#         product_name = request.form.get('product_name')
+
+#         # Check if barcode number is provided
+#         if barcode_num:
+#             # Fetch product info using the input barcode number
+#             product_info = get_product_info(barcode_num)
+#             if product_info:
+#                 return render_template('product_info.html', product=product_info)
+#             else:
+#                 # If not found in the database, fetch from external API
+#                 product_data = {"barcode_num": barcode_num}  # Initialize with barcode
+#                 api_success = False
+
+#                 for endpoint in API_ENDPOINTS:
+#                     try:
+#                         response = requests.get(endpoint.format(barcode=barcode_num))
+#                         if response.status_code == 200:
+#                             data = response.json()
+
+#                             # Parse API response to get product details
+#                             if "product" in data and data["product"]:
+#                                 product_data.update({
+#                                     'product_name': data["product"].get('product_name', 'Unknown'),
+#                                     'ingredients': data["product"].get('ingredients_text', 'Unknown'),
+#                                     'energy': data["product"].get('nutriments', {}).get('energy-kcal_100g', 0),
+#                                     'proteins': data["product"].get('nutriments', {}).get('proteins_100g', 0),
+#                                     'carbohydrates': data["product"].get('nutriments', {}).get('carbohydrates_100g', 0),
+#                                     'cholesterol': data["product"].get('nutriments', {}).get('cholesterol_100g', 0),
+#                                     'sugars': data["product"].get('nutriments', {}).get('sugars_100g', 0),
+#                                     'total_fat': data["product"].get('nutriments', {}).get('fat_100g', 0),
+#                                     'saturated_fat': data["product"].get('nutriments', {}).get('saturated-fat_100g', 0),
+#                                     'trans_fat': data["product"].get('nutriments', {}).get('trans-fat_100g', 0),
+#                                     'sodium': data["product"].get('nutriments', {}).get('sodium_100g', 0),
+#                                     'allergens': data["product"].get('allergens', 'Unknown'),
+#                                     'nutrition_grade': data["product"].get('nutrition_grades_tags', ['Unknown'])[0]
+#                                 })
+#                                 api_success = True
+#                                 break  # Stop searching once we have the data
+#                     except Exception as e:
+#                         print(f"API error: {e}")  # Log any API error
+
+#                 if api_success:
+#                     # Insert fetched product data into the database
+#                     insert_product_data(product_data)
+#                     return render_template('product_info.html', product=product_data)
+#                 else:
+#                     return render_template(
+#                         'post_login_menu.html', 
+#                         username=username, 
+#                         error="No product found with the given barcode, even from external sources."
+#                     )
+
+#         # Check if product name is provided
+#         if product_name:
+#             # Search for products by name
+#             matching_products = search_product_by_name(product_name)
+#             if matching_products:
+#                 # Redirect to product_info.html with the first matching product
+#                 first_product = matching_products[0]
+#                 product_info = {
+#                     'id': first_product[0],
+#                     'barcode_num': first_product[1],
+#                     'product_name': first_product[2],
+#                     'ingredients': first_product[3],
+#                     'energy': first_product[4],
+#                     'proteins': first_product[5],
+#                     'carbohydrates': first_product[6],
+#                     'cholesterol': first_product[7],
+#                     'sugars': first_product[8],
+#                     'total_fat': first_product[9],
+#                     'saturated_fat': first_product[10],
+#                     'trans_fat': first_product[11],
+#                     'sodium': first_product[12],
+#                     'fruits_vegetables_nuts': first_product[13],
+#                     'dietary_fibre': first_product[14],
+#                     'allergens': first_product[15],
+#                     'nutrition_grade': first_product[16],
+#                 }
+#                 return render_template('product_name.html', product=product_info)
+#             else:
+#                 return render_template(
+#                     'post_login_menu.html', 
+#                     username=username, 
+#                     error="No products found matching the entered name."
+#                 )
+
+#     return render_template('post_login_menu.html', username=username)
+
+
+import sqlite3
+import requests
+from PIL import Image
+from io import BytesIO
+import os
+
+# Database path
+PRODUCT_DB_PATH = 'product_information.db'
+
+# Directory for saving product images
+IMAGE_SAVE_PATH = os.path.join('static', 'product_images')
+
+# API endpoints for product lookup (add more endpoints as needed)
+API_ENDPOINTS = [
+    "https://world.openfoodfacts.org/api/v0/product/{barcode}.json",
+    "https://api.upcitemdb.com/prod/trial/lookup?upc={barcode}"
+]
+
+# Ensure image save path exists
+os.makedirs(IMAGE_SAVE_PATH, exist_ok=True)
+
+# Fetch product data from APIs
+def fetch_product_data(barcode):
+    product_data = {"barcode_num": barcode}  # Initialize with the barcode
+    product_image_url = None
+
+    for endpoint in API_ENDPOINTS:
+        url = endpoint.format(barcode=barcode)
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                if 'product' in data:
+                    product = data['product']
+                    # Format allergens field
+                    allergens = product.get("allergens", "N/A")
+                    formatted_allergens = (
+                        ", ".join([a.split(":")[-1].capitalize() for a in allergens.split(",")])
+                        if allergens != "N/A" else "N/A"
+                    )
+                    product_data.update({
+                        "product_name": product.get("product_name", "N/A"),
+                        "ingredients": product.get("ingredients_text", "N/A"),
+                        "energy": product.get("nutriments", {}).get("energy_100g", 0),
+                        "proteins": product.get("nutriments", {}).get("proteins_100g", 0),
+                        "carbohydrates": product.get("nutriments", {}).get("carbohydrates_100g", 0),
+                        "cholesterol": product.get("nutriments", {}).get("cholesterol_100g", 0),
+                        "sugars": product.get("nutriments", {}).get("sugars_100g", 0),
+                        "total_fat": product.get("nutriments", {}).get("fat_100g", 0),
+                        "saturated_fat": product.get("nutriments", {}).get("saturated-fat_100g", 0),
+                        "trans_fat": product.get("nutriments", {}).get("trans-fat_100g", 0),
+                        "sodium": product.get("nutriments", {}).get("sodium_100g", 0),
+                        "fruits_vegetables_nuts": product.get("nutriments", {}).get("fruits-vegetables-nuts_100g", 0),
+                        "dietary_fibre": product.get("nutriments", {}).get("fiber_100g", 0),
+                        "allergens": formatted_allergens,
+                        "nutrition_grade": product.get("nutrition_grades", "N/A").upper() if product.get("nutrition_grades") else "N/A",
+                    })
+                    # Get the product image URL
+                    product_image_url = product.get("image_url")
+                elif 'items' in data and data['items']:
+                    item = data['items'][0]
+                    product_data.update({
+                        "product_name": item.get("title", "N/A"),
+                        # Add other fields if needed...
+                    })
+        except requests.RequestException as e:
+            print(f"Error fetching data from {url}: {e}")
+    return product_data, product_image_url
+
+# Download and resize product image
+def download_and_resize_image(image_url, save_path):
+    try:
+        response = requests.get(image_url)
+        if response.status_code == 200:
+            image = Image.open(BytesIO(response.content))
+            # Resize image to height = 250 pixels, maintaining aspect ratio
+            width, height = image.size
+            new_height = 250
+            new_width = int((new_height / height) * width)
+            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            # Save the image
+            image.save(save_path)
+            print(f"Image saved at: {save_path}")
+    except Exception as e:
+        print(f"Error downloading or resizing image: {e}")
+
+
+# Insert product into the database
+def save_product_to_db(data):
+    conn = sqlite3.connect(PRODUCT_DB_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            INSERT INTO Products (
+                barcode_num, product_name, ingredients, energy, proteins, carbohydrates, cholesterol, 
+                sugars, total_fat, saturated_fat, trans_fat, sodium, fruits_vegetables_nuts, dietary_fibre, 
+                allergens, nutrition_grade
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            data['barcode_num'], data['product_name'], data['ingredients'], data['energy'], data['proteins'], 
+            data['carbohydrates'], data['cholesterol'], data['sugars'], data['total_fat'], data['saturated_fat'], 
+            data['trans_fat'], data['sodium'], data['fruits_vegetables_nuts'], data['dietary_fibre'], 
+            data['allergens'], data['nutrition_grade']
+        ))
+        conn.commit()
+        print("Product saved successfully.")
+    except sqlite3.IntegrityError:
+        print("Product with this barcode already exists.")
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+    finally:
+        conn.close()
+
+# Main function
+def main():
+    barcode = input("Enter a 13-digit barcode number: ").strip()
+    if len(barcode) != 13 or not barcode.isdigit():
+        print("Invalid barcode number. Please enter a valid 13-digit barcode.")
+        return
+
+    # Check if the product already exists in the database
+    conn = sqlite3.connect(PRODUCT_DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM Products WHERE barcode_num = ?", (barcode,))
+    existing_product = cursor.fetchone()
+    conn.close()
+
+    if existing_product:
+        print("Product with this barcode already exists in the database.")
+    else:
+        # Fetch product data from APIs
+        fetched_data, image_url = fetch_product_data(barcode)
+        if not fetched_data:
+            print(f"No data found for barcode {barcode}.")
+            return
+
+        # Display fetched data for user confirmation
+        print("\nFetched product data:")
+        for key, value in fetched_data.items():
+            print(f"{key}: {value}")
+
+        confirm = input("\nDo you want to add this product to the database? (Y/N): ").strip().upper()
+        if confirm == 'Y':
+            # Save product data to database
+            save_product_to_db(fetched_data)
+
+            # Download and save product image
+            if image_url:
+                image_path = os.path.join(IMAGE_SAVE_PATH, f"{barcode}.jpg")
+                download_and_resize_image(image_url, image_path)
+            else:
+                print("No image URL found for this product.")
+
+
+
+
+
 @app.route('/post_login_menu', methods=['GET', 'POST'])
 def post_login_menu():
     if 'username' not in session:
@@ -1872,7 +2424,60 @@ def post_login_menu():
             if product_info:
                 return render_template('product_info.html', product=product_info)
             else:
-                return render_template('post_login_menu.html', username=username, error="No product found with the given barcode.")
+                # If not found in the database, fetch from external API
+                product_data = {"barcode_num": barcode_num}  # Initialize with barcode
+                product_image_url = None
+                api_success = False
+
+                for endpoint in API_ENDPOINTS:
+                    try:
+                        response = requests.get(endpoint.format(barcode=barcode_num))
+                        if response.status_code == 200:
+                            data = response.json()
+
+                            # Parse API response to get product details
+                            if "product" in data and data["product"]:
+                                product = data["product"]
+                                product_data.update({
+                                    'product_name': product.get('product_name', 'Unknown'),
+                                    'ingredients': product.get('ingredients_text', 'Unknown'),
+                                    'energy': product.get('nutriments', {}).get('energy-kcal_100g', 0),
+                                    'proteins': product.get('nutriments', {}).get('proteins_100g', 0),
+                                    'carbohydrates': product.get('nutriments', {}).get('carbohydrates_100g', 0),
+                                    'cholesterol': product.get('nutriments', {}).get('cholesterol_100g', 0),
+                                    'sugars': product.get('nutriments', {}).get('sugars_100g', 0),
+                                    'total_fat': product.get('nutriments', {}).get('fat_100g', 0),
+                                    'saturated_fat': product.get('nutriments', {}).get('saturated-fat_100g', 0),
+                                    'trans_fat': product.get('nutriments', {}).get('trans-fat_100g', 0),
+                                    'sodium': product.get('nutriments', {}).get('sodium_100g', 0),
+                                    'fruits_vegetables_nuts': product.get('nutriments', {}).get('fruits-vegetables-nuts_100g', 0),
+                                    'dietary_fibre': product.get('nutriments', {}).get('fiber_100g', 0),
+                                    'allergens': product.get('allergens', 'Unknown'),
+                                    'nutrition_grade': product.get('nutrition_grades_tags', ['Unknown'])[0]
+                                })
+                                product_image_url = product.get('image_url')
+                                api_success = True
+                                break  # Stop searching once we have the data
+                    except Exception as e:
+                        print(f"API error: {e}")  # Log any API error
+
+                if api_success:
+                    # Insert fetched product data into the database
+                    insert_product_data(product_data)
+
+                    # Save product image if available
+                    if product_image_url:
+                        image_save_path = os.path.join(IMAGE_SAVE_PATH, f"{barcode_num}.jpg")
+                        download_and_resize_image(product_image_url, image_save_path)
+                        product_data['image_path'] = image_save_path
+
+                    return render_template('product_info.html', product=product_data)
+                else:
+                    return render_template(
+                        'post_login_menu.html',
+                        username=username,
+                        error="No product found with the given barcode, even from external sources."
+                    )
 
         # Check if product name is provided
         if product_name:
@@ -1900,12 +2505,15 @@ def post_login_menu():
                     'allergens': first_product[15],
                     'nutrition_grade': first_product[16],
                 }
-                return render_template('product_name.html', product=product_info)
+                return render_template('product_info.html', product=product_info)
             else:
-                return render_template('post_login_menu.html', username=username, error="No products found matching the entered name.")
+                return render_template(
+                    'post_login_menu.html',
+                    username=username,
+                    error="No products found matching the entered name."
+                )
 
     return render_template('post_login_menu.html', username=username)
-
 
 
 
@@ -2743,21 +3351,325 @@ def delete_product():
 
     return render_template('delete_product.html')
 
+# @app.route('/view_all_products')
+# def view_all_products():
+#     conn = sqlite3.connect(PRODUCT_DB_PATH)
+#     cursor = conn.cursor()
+    
+#     try:
+#         cursor.execute("SELECT * FROM Products")
+#         products = cursor.fetchall()
+#     except sqlite3.Error as e:
+#         print("Database error:", e)
+#         products = []
+#     finally:
+#         conn.close()
+    
+#     return render_template('products.html', products=products)
+
+
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+
+
+
+# @app.route('/view_all_products')
+# def view_all_products():
+#     conn = sqlite3.connect(PRODUCT_DB_PATH)
+#     cursor = conn.cursor()
+
+#     try:
+#         # Fetch product data
+#         query = "SELECT * FROM Products"
+#         df = pd.read_sql_query(query, conn)
+        
+#         # Perform clustering analysis
+#         def map_nutrition_grade_to_numeric(grade):
+#             """
+#             Convert nutrition grade (A-E) to numeric values for clustering.
+#             """
+#             grade_mapping = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5}
+#             return grade_mapping.get(grade, 5)  # Default to 5 for unknown grades
+        
+#         # Map nutrition grade to numeric
+#         df['nutrition_grade_numeric'] = df['nutrition_grade'].map(map_nutrition_grade_to_numeric)
+        
+#         features = ['sugars', 'sodium', 'total_fat', 'saturated_fat', 'trans_fat', 
+#                     'energy', 'proteins', 'cholesterol', 'carbohydrates', 'dietary_fibre']
+        
+#         # Normalize data for clustering
+#         scaler = StandardScaler()
+#         normalized_data = scaler.fit_transform(df[features].fillna(0))
+        
+#         # Apply K-Means clustering
+#         kmeans = KMeans(n_clusters=3, init='k-means++', random_state=42)
+#         df['Cluster'] = kmeans.fit_predict(normalized_data)
+        
+#         # Classify clusters into labels
+#         cluster_labels = {0: 'Healthy', 1: 'Average', 2: 'Unhealthy'}  # Adjust based on actual cluster characteristics
+#         df['Cluster_Label'] = df['Cluster'].map(cluster_labels)
+        
+#         # Prepare data for rendering
+#         products = df.to_dict('records')  # Convert DataFrame to list of dictionaries for HTML rendering
+
+#     except sqlite3.Error as e:
+#         print("Database error:", e)
+#         products = []
+#     finally:
+#         conn.close()
+
+#     return render_template('products.html', products=products)
+
+# @app.route('/view_all_products')
+# def view_all_products():
+#     conn = sqlite3.connect(PRODUCT_DB_PATH)
+#     try:
+#         # Fetch product data
+#         query = "SELECT * FROM Products"
+#         df = pd.read_sql_query(query, conn)
+
+#         # Check if necessary columns are present
+#         required_columns = ['sugars', 'sodium', 'total_fat', 'saturated_fat', 'trans_fat',
+#                             'energy', 'proteins', 'cholesterol', 'carbohydrates', 'dietary_fibre', 'nutrition_grade']
+#         missing_columns = [col for col in required_columns if col not in df.columns]
+#         if missing_columns:
+#             raise KeyError(f"Missing columns in the database: {missing_columns}")
+
+#         # Convert nutrition grade to numeric for clustering
+#         def map_nutrition_grade_to_numeric(grade):
+#             grade_mapping = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5}
+#             return grade_mapping.get(grade, 5)  # Default to 5 for unknown grades
+        
+#         df['nutrition_grade_numeric'] = df['nutrition_grade'].map(map_nutrition_grade_to_numeric)
+
+#         # Normalize data for clustering
+#         features = ['sugars', 'sodium', 'total_fat', 'saturated_fat', 'trans_fat',
+#                     'energy', 'proteins', 'cholesterol', 'carbohydrates', 'dietary_fibre']
+#         scaler = StandardScaler()
+#         normalized_data = scaler.fit_transform(df[features].fillna(0))
+
+#         # Apply K-Means clustering
+#         kmeans = KMeans(n_clusters=3, init='k-means++', random_state=42)
+#         df['Cluster'] = kmeans.fit_predict(normalized_data)
+
+#         # Classify clusters into labels
+#         cluster_labels = {0: 'Healthy', 1: 'Average', 2: 'Unhealthy'}
+#         df['Cluster_Label'] = df['Cluster'].map(cluster_labels)
+
+#         # Sort products by Cluster_Label: Healthy, Average, Unhealthy
+#         cluster_order = ['Healthy', 'Average', 'Unhealthy']
+#         df['Cluster_Label'] = pd.Categorical(df['Cluster_Label'], categories=cluster_order, ordered=True)
+#         df = df.sort_values(by='Cluster_Label')
+
+#         # Prepare data for rendering
+#         products = df.to_dict('records')  # Convert DataFrame to list of dictionaries
+
+#     except sqlite3.Error as e:
+#         print("Database error:", e)
+#         products = []
+#     except KeyError as ke:
+#         print("Data error:", ke)
+#         products = []
+#     finally:
+#         conn.close()
+
+#     return render_template('products.html', products=products)
+
+
+
+
+
+
+import sqlite3
+import pandas as pd
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+import os
+
+
+def fetch_product_data(db_path):
+    """
+    Fetch product data from the database and return as a pandas DataFrame.
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        query = "SELECT * FROM Products"
+        df = pd.read_sql_query(query, conn)
+        return df
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+def map_nutrition_grade_to_numeric(grade):
+    """
+    Convert nutrition grade (A-E) to numeric values for clustering.
+    """
+    grade_mapping = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5}
+    return grade_mapping.get(grade, 5)  # Default to 5 for unknown grades</p>
+
+def cluster_products(df, n_clusters=3):
+    """
+    Cluster products based on nutritional information, including nutrition grade.
+    """
+
+    # Include nutrition grade as a feature for clustering
+    df['nutrition_grade_numeric'] = df['nutrition_grade'].apply(map_nutrition_grade_to_numeric)
+
+    features = ['sugars', 'sodium', 'total_fat', 'saturated_fat', 'trans_fat', 'energy', 'proteins',
+                'cholesterol', 'carbohydrates', 'dietary_fibre', 'nutrition_grade_numeric']
+
+    # Ensure the DataFrame contains the necessary columns
+    missing_columns = [col for col in features if col not in df.columns]
+    if missing_columns:
+        raise KeyError(f"Missing columns in the DataFrame: {missing_columns}")
+
+    # Handle missing values
+    data = df[features].fillna(0)
+
+    # Normalize features
+    scaler = StandardScaler()
+    normalized_data = scaler.fit_transform(data)
+
+    # Tune the weight of the nutrition_grade_numeric feature to ensure it's significant but balanced
+    nutrition_grade_index = features.index('nutrition_grade_numeric')
+    normalized_data[:, nutrition_grade_index] *= 5  # Adjust multiplier if needed
+
+    # Apply K-Means clustering with 'k-means++' initialization
+    kmeans = KMeans(n_clusters=n_clusters, init='k-means++', random_state=42)
+    df['Cluster'] = kmeans.fit_predict(normalized_data)
+
+    return df, kmeans
+
+def classify_using_clusters(df, cluster_analysis):
+    """
+    Classify products into categories: Healthy, Average, and Unhealthy based on cluster analysis.
+    """
+    # Determine classification based on cluster means
+    # Example: Classify the cluster with the lowest mean nutrition_grade_numeric as Healthy
+    cluster_means = cluster_analysis['nutrition_grade_numeric'].sort_values()
+    cluster_labels = {
+        cluster_means.index[0]: 'Healthy',
+        cluster_means.index[1]: 'Average',
+        cluster_means.index[2]: 'Unhealthy'
+    }
+    df['Cluster_Label'] = df['Cluster'].map(cluster_labels)
+    return df
+
+def analyze_clusters(df):
+    """
+    Analyze the characteristics of each cluster.
+    """
+    numeric_columns = ['sugars', 'sodium', 'total_fat', 'saturated_fat', 'trans_fat', 'energy', 'proteins',
+                       'cholesterol', 'carbohydrates', 'dietary_fibre', 'nutrition_grade_numeric']
+
+    # Ensure numeric columns are correctly typed
+    df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors='coerce').fillna(0)
+
+    # Group by cluster and compute means
+    cluster_analysis = df.groupby('Cluster')[numeric_columns].mean()
+    
+    return cluster_analysis
+
+def classify_using_clusters(df):
+    """
+    Classify products into categories: Healthy, Average, and Unhealthy based on cluster analysis.
+    """
+    # Derive cluster labels from analysis rather than hard-coding
+    # Update this mapping based on the analysis output
+    cluster_labels = {0: 'Healthy', 1: 'Average', 2: 'Unhealthy'}  # Placeholder
+    df['Cluster_Label'] = df['Cluster'].map(cluster_labels)
+    return df
+
+if __name__ == "__main__":
+    db_path = "product_information.db"  # Path to your database
+    df = fetch_product_data(db_path)
+
+    if df is not None:
+        try:
+            # Step 1: Cluster products into 3 categories
+            clustered_df, kmeans_model = cluster_products(df)
+
+            # Step 2: Analyze clusters
+            cluster_analysis = analyze_clusters(clustered_df)
+
+            # Step 3: Classify products into health labels
+            classified_df = classify_using_clusters(clustered_df)
+
+            # Step 4: Display classified products with nutrition grade
+            
+            for _, row in classified_df.iterrows():
+                print(f"{row['product_name']} -> {row['Cluster_Label']} (Cluster {row['Cluster']})")
+        except Exception as e:
+            print(f"Error in main workflow: {e}")
+
+
 @app.route('/view_all_products')
 def view_all_products():
     conn = sqlite3.connect(PRODUCT_DB_PATH)
     cursor = conn.cursor()
     
     try:
-        cursor.execute("SELECT * FROM Products")
-        products = cursor.fetchall()
+        # Fetch product data
+        df = fetch_product_data(PRODUCT_DB_PATH)
+        print("Fetched Data:")
+        print(df.head())  # Debug: Print the first few rows of the fetched data
+        
+        # If no data is fetched, handle gracefully
+        if df is None or df.empty:
+            print("No products found in the database.")
+            return render_template('products.html', products=[])
+
+        # Perform clustering
+        df, kmeans = cluster_products(df)
+        print("Cluster Centers:")
+        print(kmeans.cluster_centers_)  # Debug: Print the cluster centers
+
+        # Map clusters to labels based on cluster means
+        cluster_means = df.groupby('Cluster')['nutrition_grade_numeric'].mean().sort_values()
+        print("Cluster Means:")
+        print(cluster_means)  # Debug: Print mean nutrition grade for each cluster
+        
+        cluster_labels = {cluster: label for cluster, label in zip(
+            cluster_means.index, ['Healthy', 'Average', 'Unhealthy'])}
+        print("Cluster Labels Mapping:")
+        print(cluster_labels)  # Debug: Print the mapping of clusters to labels
+
+        # Assign cluster labels to products
+        df['Cluster_Label'] = df['Cluster'].map(cluster_labels)
+        print("Data with Cluster Labels:")
+        print(df[['product_name', 'Cluster', 'Cluster_Label']].head())  # Debug: Print products with labels
+
+        # Group products by their cluster labels
+        healthy_products = df[df['Cluster_Label'] == 'Healthy'].to_dict('records')
+        average_products = df[df['Cluster_Label'] == 'Average'].to_dict('records')
+        unhealthy_products = df[df['Cluster_Label'] == 'Unhealthy'].to_dict('records')
+
     except sqlite3.Error as e:
         print("Database error:", e)
-        products = []
+        healthy_products, average_products, unhealthy_products = [], [], []
+
+    except Exception as e:
+        print("Error in processing:", e)
+        healthy_products, average_products, unhealthy_products = [], [], []
+
     finally:
         conn.close()
-    
-    return render_template('products.html', products=products)
+    print("Healthy Products:", healthy_products)
+    print("Average Products:", average_products)
+    print("Unhealthy Products:", unhealthy_products)
+
+    # Render the products.html template with grouped product data
+    return render_template(
+        'products.html',
+        healthy_products=healthy_products,
+        average_products=average_products,
+        unhealthy_products=unhealthy_products
+    )
+
 
 
 @app.route('/logout')
@@ -3240,161 +4152,443 @@ def edit_product():
 
 
 
-def calculate_probabilities(user_input, data):
-    total_count = len(data)
-    ingredient_counts = defaultdict(int)
-    conditional_counts = defaultdict(lambda: defaultdict(int))
+# def calculate_probabilities(user_input, data):
+#     total_count = len(data)
+#     ingredient_counts = defaultdict(int)
+#     conditional_counts = defaultdict(lambda: defaultdict(int))
 
-    for _, row in data.iterrows():
-        ingredients_str = row['What are some healthy alternatives/ingredients you include in your diet?']
-        if pd.notna(ingredients_str) and isinstance(ingredients_str, str):
-            ingredients = [ing.strip().lower() for ing in ingredients_str.split(',')]
-            for ingredient in ingredients:
-                ingredient_counts[ingredient] += 1
-                for column, values in user_input.items():
-                    if pd.notna(row[column]):
-                        row_values = set(val.strip().lower() for val in str(row[column]).split(','))
-                        if any(value.lower() in row_values for value in values):
-                            conditional_counts[ingredient][column] += 1
+#     for _, row in data.iterrows():
+#         ingredients_str = row['What are some healthy alternatives/ingredients you include in your diet?']
+#         if pd.notna(ingredients_str) and isinstance(ingredients_str, str):
+#             ingredients = [ing.strip().lower() for ing in ingredients_str.split(',')]
+#             for ingredient in ingredients:
+#                 ingredient_counts[ingredient] += 1
+#                 for column, values in user_input.items():
+#                     if pd.notna(row[column]):
+#                         row_values = set(val.strip().lower() for val in str(row[column]).split(','))
+#                         if any(value.lower() in row_values for value in values):
+#                             conditional_counts[ingredient][column] += 1
 
-    probabilities = {}
-    smoothing_factor = 0.1  # Laplace smoothing
-    for ingredient, count in ingredient_counts.items():
-        prior = (count + smoothing_factor) / (total_count + smoothing_factor * len(ingredient_counts))
-        likelihood = 1
-        for column, values in user_input.items():
-            cond_count = conditional_counts[ingredient][column]
-            likelihood *= (cond_count + smoothing_factor) / (count + smoothing_factor * 2)
-        probabilities[ingredient] = prior * likelihood
+#     probabilities = {}
+#     smoothing_factor = 0.1  # Laplace smoothing
+#     for ingredient, count in ingredient_counts.items():
+#         prior = (count + smoothing_factor) / (total_count + smoothing_factor * len(ingredient_counts))
+#         likelihood = 1
+#         for column, values in user_input.items():
+#             cond_count = conditional_counts[ingredient][column]
+#             likelihood *= (cond_count + smoothing_factor) / (count + smoothing_factor * 2)
+#         probabilities[ingredient] = prior * likelihood
 
-    return probabilities
+#     return probabilities
 
-def recommend_ingredients(username):
-    # Fetch user data from the health database
-    user_input = fetch_health_data(username)
+# def recommend_ingredients(username):
+#     # Fetch user data from the health database
+#     user_input = fetch_health_data(username)
 
-    # Load the CSV file
-    df = pd.read_csv(REC_PRODUCT_PATH)
+#     # Load the CSV file
+#     df = pd.read_csv(REC_PRODUCT_PATH)
     
-    df.columns = [
-        'What is your dietary type?',
-        'What chronic illnesses do you have? (separate multiple answers with commas)',
-        'What specific dietary restrictions do you follow? (separate multiple answers with commas)',
-        'Are there specific ingredients that trigger your condition(s) or cause discomfort? (separate multiple answers with commas)',
-        'What are some healthy alternatives/ingredients you include in your diet?',
-        'What health goal do you have? (separate multiple answers with commas)'
-    ]
+#     df.columns = [
+#         'What is your dietary type?',
+#         'What chronic illnesses do you have? (separate multiple answers with commas)',
+#         'What specific dietary restrictions do you follow? (separate multiple answers with commas)',
+#         'Are there specific ingredients that trigger your condition(s) or cause discomfort? (separate multiple answers with commas)',
+#         'What are some healthy alternatives/ingredients you include in your diet?',
+#         'What health goal do you have? (separate multiple answers with commas)'
+#     ]
 
-    # Calculate probabilities
-    probabilities = calculate_probabilities(user_input, df)
+#     # Calculate probabilities
+#     probabilities = calculate_probabilities(user_input, df)
     
-    # Sort ingredients by probability and filter those with confidence >= 0.010
-    recommended_ingredients = sorted(
-        [(ingredient, prob) for ingredient, prob in probabilities.items() if prob >= 0.010],
-        key=lambda x: x[1],
-        reverse=True
-    )
+#     # Sort ingredients by probability and filter those with confidence >= 0.010
+#     recommended_ingredients = sorted(
+#         [(ingredient, prob) for ingredient, prob in probabilities.items() if prob >= 0.010],
+#         key=lambda x: x[1],
+#         reverse=True
+#     )
 
-    print("\nRecommended healthy alternatives/ingredients for your diet:")
-    if recommended_ingredients:
-        for i, (ingredient, _) in enumerate(recommended_ingredients, 1):
-            print(f"{i}. {ingredient.capitalize()}")
-    else:
-        print("No recommendations were found based on your input.")
+#     print("\nRecommended healthy alternatives/ingredients for your diet:")
+#     if recommended_ingredients:
+#         for i, (ingredient, _) in enumerate(recommended_ingredients, 1):
+#             print(f"{i}. {ingredient.capitalize()}")
+#     else:
+#         print("No recommendations were found based on your input.")
 
-    # Ensure recommended_ingredients is a list and process each item
-    if isinstance(recommended_ingredients, tuple):
-        recommended_ingredients = list(recommended_ingredients)
-    elif not isinstance(recommended_ingredients, list):
-        recommended_ingredients = [recommended_ingredients]
+#     # Ensure recommended_ingredients is a list and process each item
+#     if isinstance(recommended_ingredients, tuple):
+#         recommended_ingredients = list(recommended_ingredients)
+#     elif not isinstance(recommended_ingredients, list):
+#         recommended_ingredients = [recommended_ingredients]
 
-    # Process each ingredient
-    processed_ingredients = []
-    for item in recommended_ingredients:
-        # Split by numbers and periods, then take the last part
-        parts = re.split(r'\d+\.?\s*', item[0])  # Note: item[0] to get the ingredient name
-        ingredient = parts[-1].strip().lower() if parts else ''
-        if ingredient:
-            processed_ingredients.append(ingredient)
+#     # Process each ingredient
+#     processed_ingredients = []
+#     for item in recommended_ingredients:
+#         # Split by numbers and periods, then take the last part
+#         parts = re.split(r'\d+\.?\s*', item[0])  # Note: item[0] to get the ingredient name
+#         ingredient = parts[-1].strip().lower() if parts else ''
+#         if ingredient:
+#             processed_ingredients.append(ingredient)
 
-    products = get_products_by_ingredients(processed_ingredients)
+#     products = get_products_by_ingredients(processed_ingredients)
 
-    # Display product information
-    display_product_info_ing(products)
+#     # Display product information
+#     display_product_info_ing(products)
 
-    return None
+#     return None
+
+# def fetch_health_data(username):
+#     """Fetch health data from the database for a given user."""
+#     conn = sqlite3.connect(HEALTH_DB_PATH)
+#     cursor = conn.cursor()
+
+#     cursor.execute('''
+#     SELECT age, height, weight, diet_type, chronic_illnesses, dietary_restrictions, trigger_ingredients, health_goals
+#     FROM health_form
+#     WHERE username = ?
+#     ''', (username,))
+
+#     result = cursor.fetchone()
+
+#     if result:
+#         # Map the fetched data to a dictionary similar to the form data
+#         age, height, weight, diet_type, chronic_illnesses, dietary_restrictions, trigger_ingredients, health_goals,  = result
+#         health_data = {
+#             'What is your dietary type?': [diet_type],
+#             'What chronic illnesses do you have? (separate multiple answers with commas)': chronic_illnesses.split(','),
+#             'What specific dietary restrictions do you follow? (separate multiple answers with commas)': dietary_restrictions.split(','),
+#             'Are there specific ingredients that trigger your condition(s) or cause discomfort? (separate multiple answers with commas)': trigger_ingredients.split(','),
+#             'What health goal do you have? (separate multiple answers with commas)': health_goals.split(',')
+#         }
+#     else:
+#         print(f"No data found for user {username}.")
+#         health_data = {}
+
+#     conn.close()
+
+#     return health_data
+
+# def get_products_by_ingredients(ingredients):
+#     # Connect to the SQLite database
+#     conn = sqlite3.connect(PRODUCT_DB_PATH)
+#     cursor = conn.cursor()
+
+#     try:
+#         # Ensure ingredients is a list and remove any blank spaces
+#         if isinstance(ingredients, tuple):
+#             ingredients = list(ingredients)
+#         elif not isinstance(ingredients, list):
+#             ingredients = [ingredients]
+
+#         # Remove blank spaces and empty strings from ingredients
+#         ingredients = [i.strip().lower() for i in ingredients if i.strip()]
+
+#         # Create a query that will match any of the ingredients
+#         query = """
+#         SELECT id, barcode_num, product_name, ingredients, energy, proteins, carbohydrates, cholesterol, sugars, total_fat, saturated_fat, trans_fat, sodium, fruits_vegetables_nuts, dietary_fibre, allergens, nutrition_grade, calcium, iodine, zinc, phosphorous, magnesium, vitamin_A, vitamin_B, vitamin_C, vitamin_D, vitamin_E, vitamin_K, other
+#         FROM products
+#         WHERE {}
+#         """
+
+#         # Create conditions for each ingredient
+#         conditions = " OR ".join([f"LOWER(ingredients) LIKE ?" for _ in ingredients])
+#         query = query.format(conditions)
+
+#         # Execute the query with all ingredients
+#         cursor.execute(query, tuple(f'%{ingredient}%' for ingredient in ingredients))
+
+#         # Fetch all matching results
+#         results = cursor.fetchall()
+#         return results
+
+#     except sqlite3.Error as e:
+#         print(f"An error occurred: {e}")
+#     finally:
+#         # Close the database connection
+#         conn.close()
+
+#     return None
+
+# def display_product_info_ing(products):
+#     if not products:
+#         print("No products found containing any of the recommended ingredients.")
+#         return
+
+#     for product in products:
+#         print("\nProduct Information:")
+#         print(f"Product Name: {product[2]}")
+#         print(f"Barcode: {product[1]}")
+#         print(f"Ingredients: {product[3]}")
+#         print(f"Energy: {product[4]}")
+#         print(f"Proteins: {product[5]}")
+#         print(f"Carbohydrates: {product[6]}")
+#         print(f"Cholesterol: {product[7]}")
+#         print(f"Sugars: {product[8]}")
+#         print(f"Total Fat: {product[9]}")
+#         print(f"Saturated Fat: {product[10]}")
+#         print(f"Trans Fat: {product[11]}")
+#         print(f"Sodium: {product[12]}")
+#         print(f"Fruits/Vegetables/Nuts: {product[13]}")
+#         print(f"Dietary Fibre: {product[14]}")
+#         print(f"Allergens: {product[15]}")
+#         print(f"Nutrition Grade: {product[16]}")
+#         print(f"Calcium: {product[17]}")
+#         print(f"Iodine: {product[18]}")
+#         print(f"Zinc: {product[19]}")
+#         print(f"Phosphorous: {product[20]}")
+#         print(f"Magnesium: {product[21]}")
+#         print(f"Vitamin A: {product[22]}")
+#         print(f"Vitamin B: {product[23]}")
+#         print(f"Vitamin C: {product[24]}")
+#         print(f"Vitamin D: {product[25]}")
+#         print(f"Vitamin E: {product[26]}")
+#         print(f"Vitamin K: {product[27]}")
+#         print(f"Other: {product[28]}")
+#         print("-" * 50) 
+
+
+
+
+# @app.route('/recommend', methods=['GET', 'POST'])
+# def recommend():
+#     if request.method == 'POST':
+#         # Assuming the user is logged in and their username is stored in session
+#         username = session.get('username')
+#         if not username:
+#             return redirect(url_for('login'))  # Redirect to login if user is not logged in
+
+#         # Collect form data and generate recommendations
+#         form_data = fetch_health_data(username)
+#         recommended_ingredients = recommend_ingredients(username)
+
+#         # Fetch products that contain the recommended ingredients
+#         recommended_products = get_products_by_ingredients(recommended_ingredients)
+
+#         # Render the recommendation results on the HTML page
+#         return render_template('recommendations.html', 
+#                                recommendations=recommended_ingredients, 
+#                                recommended_products=recommended_products)
+    
+#     # Render the form to collect user health data
+#     return render_template('health_form.html')
+
+
+# def fetch_health_data(username):
+#     """Fetch health data from the database for a given user."""
+#     conn = sqlite3.connect(HEALTH_DB_PATH)
+#     cursor = conn.cursor()
+
+#     cursor.execute('''
+#     SELECT age, height, weight, diet_type, chronic_illnesses, dietary_restrictions, trigger_ingredients, health_goals
+#     FROM health_form
+#     WHERE username = ?
+#     ''', (username,))
+
+#     result = cursor.fetchone()
+
+#     if result:
+#         # Map the fetched data to a dictionary similar to the form data
+#         age, height, weight, diet_type, chronic_illnesses, dietary_restrictions, trigger_ingredients, health_goals = result
+#         health_data = {
+#             'What is your dietary type?': [diet_type],
+#             'What chronic illnesses do you have? (separate multiple answers with commas)': chronic_illnesses.split(','),
+#             'What specific dietary restrictions do you follow? (separate multiple answers with commas)': dietary_restrictions.split(','),
+#             'Are there specific ingredients that trigger your condition(s) or cause discomfort? (separate multiple answers with commas)': trigger_ingredients.split(','),
+#             'What health goal do you have? (separate multiple answers with commas)': health_goals.split(',')
+#         }
+#     else:
+#         print(f"No data found for user {username}.")
+#         health_data = {}
+
+#     conn.close()
+#     return health_data
+
+
+# def recommend_ingredients(username):
+#     # Fetch user data from the health database
+#     user_input = fetch_health_data(username)
+
+#     # Load the CSV file
+#     df = pd.read_csv('rec_file.csv')
+    
+#     df.columns = [
+#         'What is your dietary type?',
+#         'What chronic illnesses do you have? (separate multiple answers with commas)',
+#         'What specific dietary restrictions do you follow? (separate multiple answers with commas)',
+#         'Are there specific ingredients that trigger your condition(s) or cause discomfort? (separate multiple answers with commas)',
+#         'What are some healthy alternatives/ingredients you include in your diet?',
+#         'What health goal do you have? (separate multiple answers with commas)'
+#     ]
+
+#     # Calculate probabilities
+#     probabilities = calculate_probabilities(user_input, df)
+    
+#     # Sort ingredients by probability and filter those with confidence >= 0.010
+#     recommended_ingredients = sorted(
+#         [(ingredient, prob) for ingredient, prob in probabilities.items() if prob >= 0.000001],
+#         key=lambda x: x[1],
+#         reverse=True
+#     )
+
+#     # Return only the ingredients (without probabilities) for rendering in the HTML
+#     return [ingredient.capitalize() for ingredient, _ in recommended_ingredients]
+
+# def calculate_probabilities(user_input, data):
+#     total_count = len(data)
+#     ingredient_counts = defaultdict(int)
+#     conditional_counts = defaultdict(lambda: defaultdict(int))
+
+#     for _, row in data.iterrows():
+#         ingredients_str = row['What are some healthy alternatives/ingredients you include in your diet?']
+#         if pd.notna(ingredients_str) and isinstance(ingredients_str, str):
+#             ingredients = [ing.strip().lower() for ing in ingredients_str.split(',')]
+#             for ingredient in ingredients:
+#                 ingredient_counts[ingredient] += 1
+#                 for column, values in user_input.items():
+#                     if pd.notna(row[column]):
+#                         row_values = set(val.strip().lower() for val in str(row[column]).split(','))
+#                         if any(value.lower() in row_values for value in values):
+#                             conditional_counts[ingredient][column] += 1
+
+#     probabilities = {}
+#     smoothing_factor = 0.1  # Laplace smoothing
+#     for ingredient, count in ingredient_counts.items():
+#         prior = (count + smoothing_factor) / (total_count + smoothing_factor * len(ingredient_counts))
+#         likelihood = 1
+#         for column, values in user_input.items():
+#             cond_count = conditional_counts[ingredient][column]
+#             likelihood *= (cond_count + smoothing_factor) / (count + smoothing_factor * 2)
+#         probabilities[ingredient] = prior * likelihood
+
+#     return probabilities
+
+# def get_products_by_ingredients(ingredients):
+#     """Fetch products from the database containing any of the recommended ingredients."""
+#     # Connect to the SQLite database
+#     conn = sqlite3.connect(PRODUCT_DB_PATH)
+#     cursor = conn.cursor()
+
+#     try:
+#         # Ensure ingredients is a list and remove any blank spaces
+#         if isinstance(ingredients, tuple):
+#             ingredients = list(ingredients)
+#         elif not isinstance(ingredients, list):
+#             ingredients = [ingredients]
+
+#         # Remove blank spaces and empty strings from ingredients
+#         ingredients = [i.strip().lower() for i in ingredients if i.strip()]
+
+#         # Create a query that will match any of the ingredients
+#         query = """
+#         SELECT id, barcode_num, product_name, ingredients, energy, proteins, carbohydrates, cholesterol, sugars, total_fat, saturated_fat, trans_fat, sodium, fruits_vegetables_nuts, dietary_fibre, allergens, nutrition_grade, calcium, iodine, zinc, phosphorous, magnesium, vitamin_A, vitamin_B, vitamin_C, vitamin_D, vitamin_E, vitamin_K, other
+#         FROM products
+#         WHERE {}
+#         """
+
+#         # Create conditions for each ingredient
+#         conditions = " OR ".join([f"LOWER(ingredients) LIKE ?" for _ in ingredients])
+#         query = query.format(conditions)
+
+#         # Execute the query with all ingredients
+#         cursor.execute(query, tuple(f'%{ingredient}%' for ingredient in ingredients))
+
+#         # Fetch all matching results
+#         results = cursor.fetchall()
+
+#         # Transform the results into a list of dictionaries for easier template rendering
+#         product_list = []
+#         for product in results:
+#             product_data = {
+#                 'product_name': product[2],
+#                 'barcode': product[1],
+#                 'ingredients': product[3],
+#                 'energy': product[4],
+#                 'proteins': product[5],
+#                 'carbohydrates': product[6],
+#                 'cholesterol': product[7],
+#                 'sugars': product[8],
+#                 'total_fat': product[9],
+#                 'saturated_fat': product[10],
+#                 'trans_fat': product[11],
+#                 'sodium': product[12],
+#                 'fruits_vegetables_nuts': product[13],
+#                 'dietary_fibre': product[14],
+#                 'allergens': product[15],
+#                 'nutrition_grade': product[16],
+#                 'calcium': product[17],
+#                 'iodine': product[18],
+#                 'zinc': product[19],
+#                 'phosphorous': product[20],
+#                 'magnesium': product[21],
+#                 'vitamin_A': product[22],
+#                 'vitamin_B': product[23],
+#                 'vitamin_C': product[24],
+#                 'vitamin_D': product[25],
+#                 'vitamin_E': product[26],
+#                 'vitamin_K': product[27],
+#                 'other': product[28],
+#             }
+#             product_list.append(product_data)
+
+#         return product_list
+
+#     except sqlite3.Error as e:
+#         print(f"An error occurred: {e}")
+#     finally:
+#         # Close the database connection
+#         conn.close()
+
+#     return []
+
+
 
 def fetch_health_data(username):
+
     """Fetch health data from the database for a given user."""
+
     conn = sqlite3.connect(HEALTH_DB_PATH)
+
     cursor = conn.cursor()
 
     cursor.execute('''
+
     SELECT age, height, weight, diet_type, chronic_illnesses, dietary_restrictions, trigger_ingredients, health_goals
+
     FROM health_form
+
     WHERE username = ?
+
     ''', (username,))
 
     result = cursor.fetchone()
 
     if result:
+
         # Map the fetched data to a dictionary similar to the form data
-        age, height, weight, diet_type, chronic_illnesses, dietary_restrictions, trigger_ingredients, health_goals,  = result
+
+        age, height, weight, diet_type, chronic_illnesses, dietary_restrictions, trigger_ingredients, health_goals = result
+
         health_data = {
-            'What is your dietary type?': [diet_type],
-            'What chronic illnesses do you have? (separate multiple answers with commas)': chronic_illnesses.split(','),
-            'What specific dietary restrictions do you follow? (separate multiple answers with commas)': dietary_restrictions.split(','),
-            'Are there specific ingredients that trigger your condition(s) or cause discomfort? (separate multiple answers with commas)': trigger_ingredients.split(','),
-            'What health goal do you have? (separate multiple answers with commas)': health_goals.split(',')
+
+            'What is your dietary type?': diet_type.lower(),
+
+            'What chronic illnesses do you have? ': ','.join([illness.strip().lower() for illness in chronic_illnesses.split(',') if illness]),
+
+            'What specific dietary restrictions do you follow?': ','.join([restriction.strip().lower() for restriction in dietary_restrictions.split(',') if restriction]),
+
+            'Are there specific ingredients that trigger your condition(s) or cause discomfort? ': ','.join([trigger.strip().lower() for trigger in trigger_ingredients.split(',') if trigger]),
+
+            'What health goal do you have?': ','.join([goal.strip().lower() for goal in health_goals.split(',') if goal])
+
         }
+
     else:
-        print(f"No data found for user {username}.")
+
         health_data = {}
 
     conn.close()
 
     return health_data
 
-def get_products_by_ingredients(ingredients):
-    # Connect to the SQLite database
-    conn = sqlite3.connect(PRODUCT_DB_PATH)
-    cursor = conn.cursor()
-
-    try:
-        # Ensure ingredients is a list and remove any blank spaces
-        if isinstance(ingredients, tuple):
-            ingredients = list(ingredients)
-        elif not isinstance(ingredients, list):
-            ingredients = [ingredients]
-
-        # Remove blank spaces and empty strings from ingredients
-        ingredients = [i.strip().lower() for i in ingredients if i.strip()]
-
-        # Create a query that will match any of the ingredients
-        query = """
-        SELECT id, barcode_num, product_name, ingredients, energy, proteins, carbohydrates, cholesterol, sugars, total_fat, saturated_fat, trans_fat, sodium, fruits_vegetables_nuts, dietary_fibre, allergens, nutrition_grade, calcium, iodine, zinc, phosphorous, magnesium, vitamin_A, vitamin_B, vitamin_C, vitamin_D, vitamin_E, vitamin_K, other
-        FROM products
-        WHERE {}
-        """
-
-        # Create conditions for each ingredient
-        conditions = " OR ".join([f"LOWER(ingredients) LIKE ?" for _ in ingredients])
-        query = query.format(conditions)
-
-        # Execute the query with all ingredients
-        cursor.execute(query, tuple(f'%{ingredient}%' for ingredient in ingredients))
-
-        # Fetch all matching results
-        results = cursor.fetchall()
-        return results
-
-    except sqlite3.Error as e:
-        print(f"An error occurred: {e}")
-    finally:
-        # Close the database connection
-        conn.close()
-
-    return None
 
 def display_product_info_ing(products):
     if not products:
@@ -3433,198 +4627,205 @@ def display_product_info_ing(products):
         print(f"Other: {product[28]}")
         print("-" * 50) 
 
+from flask import Flask, request, render_template
+import pandas as pd
+import sqlite3
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import MultiLabelBinarizer, StandardScaler
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.svm import SVC
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
 
 
 
-@app.route('/recommend', methods=['GET', 'POST'])
-def recommend():
-    if request.method == 'POST':
-        # Assuming the user is logged in and their username is stored in session
-        username = session.get('username')
-        if not username:
-            return redirect(url_for('login'))  # Redirect to login if user is not logged in
+# Initialize global variables
+svm_pipeline, mlb, feature_cols = None, None, None
 
-        # Collect form data and generate recommendations
-        form_data = fetch_health_data(username)
-        recommended_ingredients = recommend_ingredients(username)
+# Function to initialize the SVM model and feature columns
+def initialize_model():
+    global svm_pipeline, mlb, feature_cols
 
-        # Fetch products that contain the recommended ingredients
-        recommended_products = get_products_by_ingredients(recommended_ingredients)
-
-        # Render the recommendation results on the HTML page
-        return render_template('recommendations.html', 
-                               recommendations=recommended_ingredients, 
-                               recommended_products=recommended_products)
-    
-    # Render the form to collect user health data
-    return render_template('health_form.html')
-
-
-def fetch_health_data(username):
-    """Fetch health data from the database for a given user."""
-    conn = sqlite3.connect(HEALTH_DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute('''
-    SELECT age, height, weight, diet_type, chronic_illnesses, dietary_restrictions, trigger_ingredients, health_goals
-    FROM health_form
-    WHERE username = ?
-    ''', (username,))
-
-    result = cursor.fetchone()
-
-    if result:
-        # Map the fetched data to a dictionary similar to the form data
-        age, height, weight, diet_type, chronic_illnesses, dietary_restrictions, trigger_ingredients, health_goals = result
-        health_data = {
-            'What is your dietary type?': [diet_type],
-            'What chronic illnesses do you have? (separate multiple answers with commas)': chronic_illnesses.split(','),
-            'What specific dietary restrictions do you follow? (separate multiple answers with commas)': dietary_restrictions.split(','),
-            'Are there specific ingredients that trigger your condition(s) or cause discomfort? (separate multiple answers with commas)': trigger_ingredients.split(','),
-            'What health goal do you have? (separate multiple answers with commas)': health_goals.split(',')
-        }
-    else:
-        print(f"No data found for user {username}.")
-        health_data = {}
-
-    conn.close()
-    return health_data
-
-def recommend_ingredients(username):
-    # Fetch user data from the health database
-    user_input = fetch_health_data(username)
-
-    # Load the CSV file
+    # Load the dataset
     df = pd.read_csv('rec_file.csv')
-    
-    df.columns = [
+
+    feature_cols = [
         'What is your dietary type?',
-        'What chronic illnesses do you have? (separate multiple answers with commas)',
-        'What specific dietary restrictions do you follow? (separate multiple answers with commas)',
-        'Are there specific ingredients that trigger your condition(s) or cause discomfort? (separate multiple answers with commas)',
-        'What are some healthy alternatives/ingredients you include in your diet?',
-        'What health goal do you have? (separate multiple answers with commas)'
+        'What chronic illnesses do you have? ',
+        'What specific dietary restrictions do you follow?',
+        'Are there specific ingredients that trigger your condition(s) or cause discomfort? ',
+        'What health goal do you have?'
     ]
 
-    # Calculate probabilities
-    probabilities = calculate_probabilities(user_input, df)
-    
-    # Sort ingredients by probability and filter those with confidence >= 0.010
-    recommended_ingredients = sorted(
-        [(ingredient, prob) for ingredient, prob in probabilities.items() if prob >= 0.000001],
-        key=lambda x: x[1],
-        reverse=True
+    target_col = 'What are some healthy alternatives/ingredients you include in your diet?'
+
+    # Preprocess the target column for multi-label classification
+    df[target_col] = df[target_col].fillna('').apply(lambda x: [item.strip().lower() for item in x.split(',') if item])
+
+    # Fill missing values in features and transform to lowercase
+    for col in feature_cols:
+        df[col] = df[col].fillna('').astype(str).apply(lambda x: ','.join([item.strip().lower() for item in x.split(',') if item]))
+
+    # Split data into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(df[feature_cols], df[target_col], test_size=0.2, random_state=42)
+
+    # Transform target data using MultiLabelBinarizer for multi-label classification
+    mlb = MultiLabelBinarizer()
+    y_train_mlb = mlb.fit_transform(y_train)
+    y_test_mlb = mlb.transform(y_test)
+
+    # Define preprocessing for features
+    preprocessor = ColumnTransformer(
+        transformers=[
+            (col, CountVectorizer(tokenizer=lambda x: x.split(','), lowercase=True, token_pattern=None), col)
+            for col in feature_cols
+        ],
+        remainder='drop'
     )
 
-    # Return only the ingredients (without probabilities) for rendering in the HTML
-    return [ingredient.capitalize() for ingredient, _ in recommended_ingredients]
+    # Define the SVM model pipeline with OneVsRestClassifier
+    svm_pipeline = Pipeline([
+        ('preprocessor', preprocessor),
+        ('scaler', StandardScaler(with_mean=False)),
+        ('clf', OneVsRestClassifier(SVC(kernel='linear', probability=True, random_state=42)))
+    ])
 
-def calculate_probabilities(user_input, data):
-    total_count = len(data)
-    ingredient_counts = defaultdict(int)
-    conditional_counts = defaultdict(lambda: defaultdict(int))
+    # Fit the model
+    svm_pipeline.fit(X_train, y_train_mlb)
 
-    for _, row in data.iterrows():
-        ingredients_str = row['What are some healthy alternatives/ingredients you include in your diet?']
-        if pd.notna(ingredients_str) and isinstance(ingredients_str, str):
-            ingredients = [ing.strip().lower() for ing in ingredients_str.split(',')]
-            for ingredient in ingredients:
-                ingredient_counts[ingredient] += 1
-                for column, values in user_input.items():
-                    if pd.notna(row[column]):
-                        row_values = set(val.strip().lower() for val in str(row[column]).split(','))
-                        if any(value.lower() in row_values for value in values):
-                            conditional_counts[ingredient][column] += 1
+    # Return updated global variables
+    return svm_pipeline, mlb, feature_cols
 
-    probabilities = {}
-    smoothing_factor = 0.1  # Laplace smoothing
-    for ingredient, count in ingredient_counts.items():
-        prior = (count + smoothing_factor) / (total_count + smoothing_factor * len(ingredient_counts))
-        likelihood = 1
-        for column, values in user_input.items():
-            cond_count = conditional_counts[ingredient][column]
-            likelihood *= (cond_count + smoothing_factor) / (count + smoothing_factor * 2)
-        probabilities[ingredient] = prior * likelihood
-
-    return probabilities
+# Initialize the model globally
+svm_pipeline, mlb, feature_cols = initialize_model()
 
 def get_products_by_ingredients(ingredients):
-    """Fetch products from the database containing any of the recommended ingredients."""
-    # Connect to the SQLite database
+    """Retrieve products based on ingredients."""
     conn = sqlite3.connect(PRODUCT_DB_PATH)
     cursor = conn.cursor()
-
     try:
-        # Ensure ingredients is a list and remove any blank spaces
-        if isinstance(ingredients, tuple):
-            ingredients = list(ingredients)
-        elif not isinstance(ingredients, list):
+        if not isinstance(ingredients, list):
             ingredients = [ingredients]
-
-        # Remove blank spaces and empty strings from ingredients
+        # Clean and prepare ingredients
         ingredients = [i.strip().lower() for i in ingredients if i.strip()]
-
-        # Create a query that will match any of the ingredients
+        if not ingredients:
+            return []
+        # Build the SQL query dynamically
         query = """
-        SELECT id, barcode_num, product_name, ingredients, energy, proteins, carbohydrates, cholesterol, sugars, total_fat, saturated_fat, trans_fat, sodium, fruits_vegetables_nuts, dietary_fibre, allergens, nutrition_grade, calcium, iodine, zinc, phosphorous, magnesium, vitamin_A, vitamin_B, vitamin_C, vitamin_D, vitamin_E, vitamin_K, other
+        SELECT id, barcode_num, product_name, ingredients, energy, proteins, carbohydrates,
+               cholesterol, sugars, total_fat, saturated_fat, trans_fat, sodium,
+               fruits_vegetables_nuts, dietary_fibre, allergens, nutrition_grade, calcium,
+               iodine, zinc, phosphorous, magnesium, vitamin_A, vitamin_B, vitamin_C,
+               vitamin_D, vitamin_E, vitamin_K, other
         FROM products
         WHERE {}
-        """
-
-        # Create conditions for each ingredient
-        conditions = " OR ".join([f"LOWER(ingredients) LIKE ?" for _ in ingredients])
-        query = query.format(conditions)
-
-        # Execute the query with all ingredients
-        cursor.execute(query, tuple(f'%{ingredient}%' for ingredient in ingredients))
-
-        # Fetch all matching results
+        """.format(" OR ".join([f"LOWER(ingredients) LIKE ?" for _ in ingredients]))
+        # Execute the query
+        cursor.execute(query, tuple(f"%{ingredient}%" for ingredient in ingredients))
+        # Fetch and format results
         results = cursor.fetchall()
-
-        # Transform the results into a list of dictionaries for easier template rendering
-        product_list = []
-        for product in results:
-            product_data = {
-                'product_name': product[2],
-                'barcode': product[1],
-                'ingredients': product[3],
-                'energy': product[4],
-                'proteins': product[5],
-                'carbohydrates': product[6],
-                'cholesterol': product[7],
-                'sugars': product[8],
-                'total_fat': product[9],
-                'saturated_fat': product[10],
-                'trans_fat': product[11],
-                'sodium': product[12],
-                'fruits_vegetables_nuts': product[13],
-                'dietary_fibre': product[14],
-                'allergens': product[15],
-                'nutrition_grade': product[16],
-                'calcium': product[17],
-                'iodine': product[18],
-                'zinc': product[19],
-                'phosphorous': product[20],
-                'magnesium': product[21],
-                'vitamin_A': product[22],
-                'vitamin_B': product[23],
-                'vitamin_C': product[24],
-                'vitamin_D': product[25],
-                'vitamin_E': product[26],
-                'vitamin_K': product[27],
-                'other': product[28],
-            }
-            product_list.append(product_data)
-
-        return product_list
-
+        if results:
+            columns = [desc[0] for desc in cursor.description]
+            products = [dict(zip(columns, row)) for row in results]
+            return products
+        return []
     except sqlite3.Error as e:
         print(f"An error occurred: {e}")
+        return []
     finally:
-        # Close the database connection
         conn.close()
 
-    return []
+
+# Route to recommend ingredients based on user input
+from flask import render_template
+
+@app.route('/recommend_ingredients/<username>', methods=['GET', 'POST'])
+
+
+# Function to initialize the SVM model globally
+def recommend_ingredients(username, threshold=0.05):
+
+    # Ensure 'username' is available
+
+    if not username:
+
+        return jsonify({"error": "'username' parameter is required."}), 400
+
+    # Fetch the global model components
+
+    global svm_pipeline, mlb, feature_cols
+
+    # Ensure feature_cols is initialized
+
+    if feature_cols is None:
+
+        return jsonify({"error": "Model is not initialized. Please check the model configuration."}), 500
+
+    # Retrieve and format user input as a DataFrame for prediction
+
+    user_input = fetch_health_data(username)
+
+    if not user_input:
+
+        return jsonify({"error": f"No data found for user {username}."}), 404
+
+    # Ensure input data is consistent with the format used during training
+
+    input_df = pd.DataFrame([user_input], columns=feature_cols)
+
+    for col in feature_cols:
+
+        input_df[col] = input_df[col].fillna('').apply(lambda x: ','.join([item.strip().lower() for item in str(x).split(',') if item]))
+
+    # Predict probabilities for each ingredient label using the trained model
+
+    ingredient_probs = svm_pipeline.predict_proba(input_df)[0]
+
+    # Collect ingredient recommendations based on the predicted probabilities
+
+    ingredient_recommendations = [
+
+        (ingredient, prob) for ingredient, prob in zip(mlb.classes_, ingredient_probs) if prob >= threshold
+
+    ]
+
+    # Sort recommendations by probability in descending order
+
+    ingredient_recommendations.sort(key=lambda x: x[1], reverse=True)
+
+    # Process the recommended ingredients for further use
+
+    processed_ingredients = [ingredient.lower() for ingredient, _ in ingredient_recommendations]
+
+    # Retrieve products based on the recommended ingredients
+
+    products = get_products_by_ingredients(processed_ingredients)
+
+    # Render the recommendations and products in the template
+
+  
+
+    return render_template('recommendations.html',
+
+                           recommendations=[ingredient.capitalize() for ingredient, _ in ingredient_recommendations],
+
+                           recommended_products=products)
+
+svm_pipeline, mlb, feature_cols = initialize_model()
+
+
+
+@app.route('/about_us')
+def about_us():
+    return render_template('about_us.html')
+
+
+
+
+
+
+
 
 
 
@@ -3661,6 +4862,7 @@ def menu():
         except ValueError:
             print("Invalid input. Please enter a number.")
 
-
+if __name__ == "__main__":
+ app.run(debug=True)
 #  menu()  # Start the programs
 
